@@ -5,6 +5,7 @@ import * as z from "zod/mini";
 import render_subscription_invites_warning_modal from "../templates/confirm_dialog/confirm_subscription_invites_warning.hbs";
 import render_change_stream_info_modal from "../templates/stream_settings/change_stream_info_modal.hbs";
 
+import * as hash_util from "./hash_util.ts";
 import * as channel from "./channel.ts";
 import * as confirm_dialog from "./confirm_dialog.ts";
 import * as dialog_widget from "./dialog_widget.ts";
@@ -27,6 +28,7 @@ import type {GroupSettingPillContainer} from "./typeahead_helper.ts";
 import type {HTMLSelectOneElement} from "./types.ts";
 import * as ui_report from "./ui_report.ts";
 import * as util from "./util.ts";
+import { stream_id } from "./compose_state.ts";
 
 let created_stream: string | undefined;
 // Default is true since the current user is added to
@@ -99,11 +101,40 @@ class StreamSubscriptionError {
 const stream_subscription_error = new StreamSubscriptionError();
 
 class StreamNameError {
-    report_already_exists(error?: string): void {
+    report_already_exists(error?: string, stream?: number | ReturnType<typeof stream_data.get_sub_by_id>): void {
+        // Try to build a settings URL for the existing channel (General tab).
+        let url: string | undefined;
+        if (typeof stream === "number") {
+            const sub = stream_data.get_sub_by_id(stream);
+            url = sub ? hash_util.channels_settings_edit_url(sub, "general")
+                        : `#streams/${stream}/general`; // safe fallback
+        } else if (stream) {
+            // stream is a sub object
+            url = hash_util.channels_settings_edit_url(stream, "general");
+        }
+        if (url) {
+            // Keep translation static; replace a token with a real <a> node.
+            const template = $t({
+                defaultMessage: "A __CHANNEL_LINK__ with this name already exists.",
+            });
+            const [pre, post] = template.split("__CHANNEL_LINK__");
+            const $msg = $("<span>");
+            $msg.append(document.createTextNode(pre));
+            $msg.append(
+                $("<a>", {
+                    class: "stream-link",
+                    href: url,
+                    text: $t({ defaultMessage: "channel" }),
+                }),
+            );
+            $msg.append(document.createTextNode(post));
+            $("#stream_name_error").empty().append($msg).show();
+            return;
+        }
+        // Fallback: plain text (no link)
         const error_message =
-            error ?? $t({defaultMessage: "A channel with this name already exists."});
-        $("#stream_name_error").text(error_message);
-        $("#stream_name_error").show();
+            error ?? $t({ defaultMessage: "A channel with this name already exists." });
+        $("#stream_name_error").text(error_message).show();
     }
 
     clear_errors(): void {
@@ -143,7 +174,7 @@ class StreamNameError {
                     this.rename_archived_stream(stream.stream_id);
                 }
             }
-            this.report_already_exists(error);
+            this.report_already_exists(error, stream);
             return;
         }
 
@@ -156,14 +187,13 @@ class StreamNameError {
             this.select();
             return false;
         }
-
         const stream = stream_data.get_sub(stream_name);
         if (stream) {
             let error;
             if (stream.is_archived) {
                 error = $t({defaultMessage: "An archived channel with this name already exists."});
             }
-            this.report_already_exists(error);
+            this.report_already_exists(error, stream.stream_id, stream_name);
             this.select();
             return false;
         }
