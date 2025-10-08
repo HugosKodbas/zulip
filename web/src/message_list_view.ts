@@ -273,7 +273,8 @@ function get_users_for_recipient_row(message: Message): RecipientRowUser[] {
         return util.strcmp(a.full_name, b.full_name);
     }
 
-    return users.sort(compare_by_name);
+    users.sort(compare_by_name);
+    return users;
 }
 
 let message_id_to_focus_after_processing_message_events:
@@ -637,10 +638,7 @@ export class MessageListView {
             // mention (which is the only other option for `mentioned` being true).
             if (message.mentioned_me_directly && is_user_mention) {
                 // Highlight messages having personal mentions only in DMs and subscribed streams.
-                if (
-                    message.type === "private" ||
-                    stream_data.is_user_subscribed(message.stream_id, people.my_current_user_id())
-                ) {
+                if (message.type === "private" || stream_data.is_subscribed(message.stream_id)) {
                     mention_classname = "direct_mention";
                 } else {
                     mention_classname = undefined;
